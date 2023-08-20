@@ -1,0 +1,76 @@
+---
+title: "C_probability_Tutorial"
+output: html_document
+date: "2023-03-15"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Sources
+```{r cars}
+pkgs = c("pROC","Rcpp","parallel","doParallel","foreach","pipeR","tidyr","dplyr","stats","invgamma","splines")
+all(sapply(pkgs , require, character.only = T))
+
+source("Q_value_sources.R"); 
+source("R_functions_0127_22.R"); 
+source("Evaluation_0127.R");
+source("Cross_Validation_0228.R");
+```
+
+## Method Tutorials
+```{r pressure, echo=FALSE}
+
+M.cv = 10;
+FDR.level = 0.2
+neigh.m = 2000;
+
+## Data-related scripts can be viewed from
+## https://github.com/lihualei71/adaptPaper/blob/master/R/exprs_laptop.R
+## The data sets we used were airway_res.RData, bottomly_res.RData, estrogen_high_res.RData, and pasilla_res.RData,
+## reformatted & named by airway_res, bottomly_res, estrogen_high_res, and pasilla_res, respectively.
+## The names can be assessed by names(data.list).
+
+data.list = readRDS("data.list")
+data = data.list[[1]]
+m = nrow(data)
+
+# pi0 estimation :
+est.pi0.x.df = Local.pi0.estimate.0127( x.vec = data$x, p.vec = data$p,
+                                        neigh.m = neigh.m, cond.alpha = 0.05 ); # cond.alpha = alpha'
+
+# pi0.x values :
+pi0.x.df = data.frame(est.pi0.x.df); # est.pi0.x, cond.pi0.x
+
+# Cross-Validation
+x.vec = data$x; p.vec = data$p;
+
+# 10-fold cross-validation for 100 times
+# In CV.alpha.0228, there is a vector of alpha.vec :
+
+nfold = 10; 
+alpha.vec = c(seq(0.001, 0.2, length = 100), 1);
+
+DDE.prop = lapply(1:M.cv, function(.){ CV.alpha.0324(alpha.vec, x.vec, p.vec, FDR.level, neigh.m, nfold, B = 20)$DDE.prop }) %>% Reduce("+",.)/M.cv
+# plot(x = alpha.vec[-length(alpha.vec)], y)
+
+cv.alpha = alpha.vec[which.max(DDE.prop)]
+print(cv.alpha)
+
+cv.source.df = Local.pi0.estimate.0127(x.vec, p.vec, neigh.m, cond.alpha = cv.alpha, B = 20)
+
+# Generate q-values :
+prop.q.df = data.frame( prop.est.pi0.x = unlist(Proposed.Q_0929(data.frame( orig.id = 1:m, p = data$p, 
+                                                                            f_x = pi0.x.df$est.pi0.x, 
+                                                                            pi0 = pi0.x.df$est.pi0.x))),
+                        prop.est.cond.pi0.x = unlist(Proposed.Q_0929(data.frame( orig.id = 1:m, p = data$p, 
+                                                                                 f_x = pi0.x.df$cond.pi0.x, 
+                                                                                 pi0 = pi0.x.df$est.pi0.x))),
+                        prop.cv.est.cond.pi0.x = unlist(Proposed.Q_0929(data = data.frame( orig.id = 1:m, 
+                                                                                           f_x = cv.source.df$cond.pi0.x, 
+                                                                                           p = p.vec, 
+                                                                                           pi0 = cv.source.df$est.pi0.x )))
+                     )
+```
+
